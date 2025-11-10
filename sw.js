@@ -1,4 +1,4 @@
-const CACHE_NAME = 'MovieTrackCache';
+const CACHE_NAME = 'MovieTrackCachev1.1';
 // List the files you want to cache for offline use.
 // ALL paths must be relative to the root of the GitHub Pages site (e.g., /<repository-name>/index.html).
 const urlsToCache = [
