@@ -1,0 +1,1762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Title changed -->
+    <title>Media Watch Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+	<link rel="icon" type="image/png" href="favicon-192.png">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Set default font to Inter for a modern look */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 10vh;
+        }
+        /* ... (rest of the style block is identical) ... */
+        /* Custom scrollbar for a dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111827; /* Tailwind gray-900 */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ea580c; /* Tailwind orange-700 */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #f97316; /* Tailwind orange-600 */
+        }
+        /* Hide total_episodes input arrows */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        /* Define pulse animation for highlight */
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        .animate-pulse {
+          animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* Long Press Visual Feedback Bar */
+        .long-press-indicator {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 5px; /* Thicker bar for visibility */
+            width: 0%;
+            background-color: #f97316; /* primary-orange */
+            opacity: 0;
+            /* Match card border radius */
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+            z-index: 10;
+        }
+        
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-orange': '#f97316', /* orange-600 */
+                        'primary-dark': '#111827',   /* gray-900 */
+                        'secondary-dark': '#1f2937', /* gray-800 */
+                        'light-text': '#f3f4f6',     /* gray-100 */
+                        'muted-text': '#9ca3af',     /* gray-400 */
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-primary-dark text-light-text antialiased">
+
+    <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <section id="top-bar-container" class="flex flex-col md:flex-row items-start md:items-center mb-10 gap-4">
+            
+            <div id="user-info" 
+                 class="flex items-center text-muted-text text-sm hover:text-light-text transition cursor-pointer mb-2 md:mb-0" 
+                 onclick="showUserSelectModal()">
+                <span data-lucide="user" class="w-5 h-5 mr-2 text-primary-orange"></span>
+                <span id="current-username" class="font-semibold text-sm sm:text-base truncate">Loading User...</span>
+                <span data-lucide="chevrons-up-down" class="w-4 h-4 ml-1 text-primary-orange"></span>
+            </div>
+            
+            <div id="search-bar-wrapper" class="relative flex-grow w-full md:w-auto">
+                <!-- Placeholder changed -->
+                <input type="text" id="search-input" placeholder="Search for a movie or show (e.g., The Matrix)..." 
+                       class="w-full p-4 pl-12 sm:pl-16 rounded-xl bg-secondary-dark border border-primary-orange/30 focus:border-primary-orange focus:ring-1 focus:ring-primary-orange text-light-text transition duration-200 shadow-lg pr-12 sm:pr-16"
+                       onkeyup="debouncedSearch()" 
+                       oninput="toggleClearButton()">
+                
+                <span data-lucide="search" class="w-5 h-5 absolute left-4 sm:left-6 top-1/2 transform -translate-y-1/2 text-primary-orange"></span>
+                
+                <button id="clear-search-btn" onclick="clearSearch()"
+                        class="absolute right-4 sm:right-6 top-1/2 transform -translate-y-1/2 text-primary-orange p-1 hover:text-orange-300 transition duration-150 hidden">
+                    <span data-lucide="x-circle" class="w-5 h-5"></span>
+                </button>
+            </div>
+        </section>
+        
+        <section class="mb-12">
+            <div id="search-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                </div>
+            
+            <div id="search-message" class="text-center text-muted-text mt-8 hidden">
+                <!-- Text will be updated by JS -->
+                Search for an item to begin tracking!
+            </div>
+            <div id="loading-indicator" class="text-center text-primary-orange mt-8 hidden">
+                <span data-lucide="loader-2" class="animate-spin inline-block w-8 h-8"></span> Loading...
+            </div>
+        </section>
+
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-3xl font-bold flex items-center">
+                    My List 
+                    <span data-lucide="list-checks" class="w-6 h-6 ml-2 text-primary-orange"></span>
+                </h2>
+                <div class="flex items-center space-x-2">
+                    <label for="sort-select" class="text-muted-text text-sm hidden sm:block">Sort By:</label>
+                    <select id="sort-select" onchange="sortAndRenderList(this.value)"
+                            class="p-2 rounded-lg bg-gray-700 border border-primary-orange/50 focus:ring-1 focus:ring-primary-orange focus:border-primary-orange text-light-text text-sm cursor-pointer">
+                        <option value="timestamp_desc">Date Added (Newest)</option>
+                        <option value="timestamp_asc">Date Added (Oldest)</option>
+                        <option value="title_asc">Name (A-Z)</option>
+                        <option value="title_desc">Name (Z-A)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="filter-controls" class="flex flex-wrap gap-3 mb-6">
+                </div>
+
+            <div id="tracking-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                </div>
+            <p id="empty-list-message" class="text-center text-muted-text mt-8 text-xl hidden">
+                <!-- Text will be updated by JS -->
+                Your tracking list is empty. Search for an item above to add it!
+            </p>
+        </section>
+    </div>
+
+    <!-- All Modals (User, Login, Register, Data Transfer) remain identical -->
+    <!-- ... (Modal HTML is unchanged) ... -->
+    <div id="toast-message" class="fixed bottom-4 right-4 bg-primary-orange text-primary-dark p-3 rounded-lg shadow-2xl transition-opacity duration-300 opacity-0 hidden">
+        Message goes here.
+    </div>
+    
+    <div id="user-select-modal" class="fixed inset-0 bg-primary-dark bg-opacity-70 z-50 flex items-center justify-center hidden">
+        <div class="bg-secondary-dark p-6 rounded-xl shadow-2xl max-w-sm w-full relative border border-primary-orange/50" onclick="event.stopPropagation()">
+            <button onclick="hideModal('user-select-modal')" 
+                    class="absolute top-3 right-3 text-muted-text hover:text-light-text transition">
+                <span data-lucide="x" class="w-6 h-6"></span>
+            </button>
+
+            <h3 class="text-2xl font-bold mb-4 text-primary-orange">Switch/Manage Users</h3>
+            
+            <div id="user-list" class="max-h-60 overflow-y-auto pr-2 mb-4 space-y-2">
+                </div>
+
+            <hr class="border-gray-700 mb-4">
+            
+            <button id="add-new-user-btn" onclick="showRegisterModal()" 
+                    class="w-full py-3 bg-primary-orange text-primary-dark font-bold rounded-lg transition duration-200 hover:bg-orange-500 shadow-md mb-2">
+                <span data-lucide="plus" class="w-5 h-5 inline-block -mt-0.5 mr-2"></span> Create New User
+            </button>
+            
+            <button id="data-transfer-btn" onclick="showDataTransferModal()" 
+                    class="w-full py-3 bg-gray-600 text-light-text font-bold rounded-lg transition duration-200 hover:bg-gray-500 shadow-md">
+                <span data-lucide="hard-drive" class="w-5 h-5 inline-block -mt-0.5 mr-2"></span> Data Transfer
+            </button>
+        </div>
+    </div>
+    
+    <div id="login-modal" class="fixed inset-0 bg-primary-dark bg-opacity-70 z-50 flex items-center justify-center hidden">
+        <form id="login-form" class="bg-secondary-dark p-6 rounded-xl shadow-2xl max-w-sm w-full relative border border-green-500/50" onsubmit="event.preventDefault(); loginUser()">
+            <button type="button" onclick="hideModal('login-modal'); showUserSelectModal();" 
+                    class="absolute top-3 right-3 text-muted-text hover:text-light-text transition">
+                <span data-lucide="x" class="w-6 h-6"></span>
+            </button>
+
+            <h3 class="text-2xl font-bold mb-4 text-green-500">Login to User</h3>
+            <p id="login-username" class="mb-4 text-light-text font-semibold"></p>
+            
+            <div class="mb-4">
+                <label for="login-password" class="block text-sm font-medium text-light-text mb-1">Password</label>
+                <input type="password" id="login-password" required
+                       class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:border-green-500 focus:ring-1 focus:ring-green-500 text-light-text">
+            </div>
+            
+            <button type="submit" class="w-full py-3 bg-green-500 text-primary-dark font-bold rounded-lg transition duration-200 hover:bg-green-400 shadow-md">
+                Unlock Data
+            </button>
+            <input type="hidden" id="login-user-id">
+        </form>
+    </div>
+
+    <div id="register-modal" class="fixed inset-0 bg-primary-dark bg-opacity-70 z-50 flex items-center justify-center hidden">
+        <form id="register-form" class="bg-secondary-dark p-6 rounded-xl shadow-2xl max-w-sm w-full relative border border-primary-orange/50" onsubmit="event.preventDefault(); handleNewUserRegistration()">
+            <button type="button" onclick="hideModal('register-modal'); showUserSelectModal();" 
+                    class="absolute top-3 right-3 text-muted-text hover:text-light-text transition">
+                <span data-lucide="x" class="w-6 h-6"></span>
+            </button>
+
+            <h3 class="text-2xl font-bold mb-4 text-primary-orange">Register New User</h3>
+            
+            <div class="mb-4">
+                <label for="register-username" class="block text-sm font-medium text-light-text mb-1">Username</label>
+                <input type="text" id="register-username" required minlength="3"
+                       class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:border-primary-orange focus:ring-1 focus:ring-primary-orange text-light-text">
+            </div>
+            
+            <div class="mb-6">
+                <label for="register-password" class="block text-sm font-medium text-light-text mb-1">Password</label>
+                <input type="password" id="register-password" required minlength="6"
+                       class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:border-primary-orange focus:ring-1 focus:ring-primary-orange text-light-text">
+                <p class="text-xs text-muted-text mt-1">
+                    This password is used to encrypt your list. Do not lose it!
+                </p>
+            </div>
+            
+            <button type="submit" class="w-full py-3 bg-primary-orange text-primary-dark font-bold rounded-lg transition duration-200 hover:bg-orange-500 shadow-md">
+                Create & Switch
+            </button>
+        </form>
+    </div>
+    
+    <div id="data-transfer-modal" class="fixed inset-0 bg-primary-dark bg-opacity-70 z-50 flex items-center justify-center hidden">
+        <div class="bg-secondary-dark p-6 rounded-xl shadow-2xl max-w-sm w-full relative border border-primary-orange/50" onclick="event.stopPropagation()">
+            <button onclick="hideModal('data-transfer-modal'); showUserSelectModal();" 
+                    class="absolute top-3 right-3 text-muted-text hover:text-light-text transition">
+                <span data-lucide="x" class="w-6 h-6"></span>
+            </button>
+
+            <h3 class="text-2xl font-bold mb-4 text-primary-orange">Data Transfer</h3>
+            <p class="text-sm text-muted-text mb-6">
+                Export or import a secure backup of the current user's data.
+            </p>
+            
+            <div class="mb-6 p-4 border border-gray-700 rounded-lg">
+                <h4 class="text-xl font-semibold mb-2 flex items-center">
+                    <span data-lucide="download" class="w-5 h-5 mr-2 text-green-500"></span> Export Backup
+                </h4>
+                <p class="text-xs text-muted-text mb-3">
+                    Creates a JSON file containing the encrypted list and user settings for the active user.
+                </p>
+                <button onclick="exportUserData()" 
+                        class="w-full py-2 bg-green-500 text-primary-dark font-bold rounded-lg transition duration-200 hover:bg-green-400 shadow-md">
+                    Download User Data
+                </button>
+            </div>
+            
+            <div class="p-4 border border-gray-700 rounded-lg">
+                <h4 class="text-xl font-semibold mb-2 flex items-center">
+                    <span data-lucide="upload" class="w-5 h-5 mr-2 text-primary-orange"></span> Import Backup
+                </h4>
+                <p class="text-xs text-muted-text mb-3">
+                    Imports a user backup file. A **new user** will be created. You'll need the original password to log in.
+                </p>
+                <input type="file" id="import-file-input" accept=".json" class="hidden" onchange="handleImportFile(this.files[0])">
+                <button onclick="document.getElementById('import-file-input').click()" 
+                        class="w-full py-2 bg-primary-orange text-primary-dark font-bold rounded-lg transition duration-200 hover:bg-orange-500 shadow-md">
+                    Choose Backup File
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW MODAL FOR API KEY -->
+    <div id="api-key-modal" class="fixed inset-0 bg-primary-dark bg-opacity-90 z-[60] flex items-center justify-center p-4">
+        <form id="api-key-form" class="bg-secondary-dark p-6 rounded-xl shadow-2xl max-w-sm w-full relative border border-primary-orange" onsubmit="event.preventDefault(); saveApiKey()">
+            <h3 class="text-2xl font-bold mb-4 text-primary-orange">OMDb API Key Required</h3>
+            <p class="text-muted-text mb-4">
+                This app requires a free API key from OMDb (Open Movie Database) to search for movies and shows.
+            </p>
+            <p class="text-sm text-muted-text mb-4">
+                1. Visit <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer" class="text-primary-orange underline hover:text-orange-300">omdbapi.com/apikey.aspx</a>
+                <br>
+                2. Select the "FREE" plan and get your key via email.
+                <br>
+                3. Paste the key below.
+            </p>
+            
+            <div class="mb-6">
+                <label for="api-key-input" class="block text-sm font-medium text-light-text mb-1">Your OMDb API Key</label>
+                <input type="text" id="api-key-input" required
+                       class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:border-primary-orange focus:ring-1 focus:ring-primary-orange text-light-text">
+            </div>
+            
+            <button type="submit" class="w-full py-3 bg-primary-orange text-primary-dark font-bold rounded-lg transition duration-200 hover:bg-orange-500 shadow-md">
+                Save and Start
+            </button>
+        </form>
+    </div>
+
+
+    <script>
+        // --- API Configuration ---
+        // !!! IMPORTANT: API Key is now loaded from localStorage ---
+        let OMDb_API_KEY = ''; 
+        let OMDb_API_URL = '';
+        
+        // --- Storage Keys (Changed to prevent conflicts) ---
+        const OMDb_API_KEY_STORAGE_KEY = 'mediaTrackerApiKey';
+        const ALL_USERS_KEY = 'mediaTrackerAllUsers'; 
+        const ACTIVE_USER_ID_KEY = 'mediaTrackerActiveUserId'; 
+        const ENCRYPTED_LIST_PREFIX = 'mediaTrackerEncryptedList_'; 
+        const FILTER_STORAGE_KEY = 'mediaTrackerFilters';
+
+        // --- PBKDF2 Constants (Unchanged) ---
+        const PBKDF2_ITERATIONS = 100000;
+        const SALT_LENGTH = 16; 
+        const KEY_ALGORITHM = { name: "AES-GCM", length: 256 };
+        
+        const CATEGORIES = ['Saved', 'Pending', 'Watching', 'Watched'];
+        
+        // 'animeList' variable name kept for minimal diff, but it now holds media
+        let animeList = []; 
+        let lastAPICall = 0;
+        const RATE_LIMIT_MS = 1000; 
+        
+        // --- USER AND ENCRYPTION VARIABLES (Unchanged) ---
+        let allUsers = []; 
+        let currentUser = null;
+        const IV_LENGTH = 12;
+        
+        // --- CACHING VARIABLES (Updated) ---
+        let lastQuery = ''; 
+        let lastOMDbResultsCache = []; // Renamed from lastJikanResultsCache
+        
+        // --- State Variables (Unchanged) ---
+        let currentSortKey = 'timestamp_desc'; 
+        let activeFilters = { 'Saved': true, 'Pending': true, 'Watching': true, 'Watched': true }; 
+
+        // --- DOM Element References (Unchanged) ---
+        const searchInput = document.getElementById('search-input');
+        const searchResultsDiv = document.getElementById('search-results');
+        const searchMessageDiv = document.getElementById('search-message');
+        const trackingListDiv = document.getElementById('tracking-list');
+        const emptyListMessage = document.getElementById('empty-list-message');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const toastElement = document.getElementById('toast-message');
+        const clearButton = document.getElementById('clear-search-btn');
+        const sortSelect = document.getElementById('sort-select');
+        const filterControlsDiv = document.getElementById('filter-controls');
+        const usernameDisplay = document.getElementById('current-username');
+
+        // --- Long Press Feature Variables (Unchanged) ---
+        const LONG_PRESS_DURATION = 500;
+        let pressTimer = null;
+        let isLongPressing = false; 
+        let currentlyPressedId = null; 
+        
+        // --- ENCRYPTION & KEY DERIVATION UTILITIES (Unchanged) ---
+        // All functions (str2ab, ab2str, deriveKey, encryptData, decryptData)
+        // are identical to the previous version.
+        // ... (Encryption functions omitted for brevity but are present) ...
+        function str2ab(base64Str) {
+            const binary_string = window.atob(base64Str);
+            const len = binary_string.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary_string.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+        function ab2str(buffer) {
+            return window.btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
+        }
+        async function deriveKey(password, base64Salt) {
+            const saltBuffer = str2ab(base64Salt);
+            const passwordBuffer = new TextEncoder().encode(password);
+            const passwordKey = await crypto.subtle.importKey(
+                "raw",
+                passwordBuffer,
+                { name: "PBKDF2" },
+                false,
+                ["deriveKey"]
+            );
+            return crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: saltBuffer,
+                    iterations: PBKDF2_ITERATIONS,
+                    hash: "SHA-256",
+                },
+                passwordKey,
+                KEY_ALGORITHM,
+                true,
+                ["encrypt", "decrypt"]
+            );
+        }
+        async function encryptData(data) {
+            if (!currentUser || !currentUser.key) throw new Error("Encryption key not available.");
+            const jsonString = JSON.stringify(data);
+            const dataBuffer = new TextEncoder().encode(jsonString);
+            const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+            const encryptedBuffer = await crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv },
+                currentUser.key,
+                dataBuffer
+            );
+            const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+            combined.set(iv, 0);
+            combined.set(new Uint8Array(encryptedBuffer), iv.length);
+            return ab2str(combined.buffer);
+        }
+        async function decryptData(base64Encrypted) {
+            if (!currentUser || !currentUser.key) throw new Error("Decryption key not available.");
+            if (!base64Encrypted) return [];
+            const combinedBuffer = str2ab(base64Encrypted);
+            const combinedArray = new Uint8Array(combinedBuffer);
+            const iv = combinedArray.slice(0, IV_LENGTH);
+            const encryptedData = combinedArray.slice(IV_LENGTH);
+            const decryptedBuffer = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: iv },
+                currentUser.key,
+                encryptedData
+            );
+            const jsonString = new TextDecoder().decode(decryptedBuffer);
+            return JSON.parse(jsonString);
+        }
+
+        // --- Helper functions for S/E formatting ---
+        function pad(num) {
+            return String(num).padStart(2, '0');
+        }
+        function formatProgress(s, e) {
+            return `S${pad(s)}E${pad(e)}`;
+        }
+        function parseProgress(str) {
+            const match = str.match(/^S(\d+)E(\d+)$/i);
+            if (match) {
+                const season = parseInt(match[1]);
+                const episode = parseInt(match[2]);
+                if (!isNaN(season) && !isNaN(episode)) {
+                    return { season, episode };
+                }
+            }
+            return null;
+        }
+
+        // --- USER MANAGEMENT (Unchanged) ---
+        // ... (User management functions omitted for brevity but are present) ...
+        function generateUUID() {
+            return 'xxxx-xxxx-4xxx-yxxx-xxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        function loadAllUsers() {
+            const storedUsers = localStorage.getItem(ALL_USERS_KEY);
+            if (storedUsers) {
+                try {
+                    allUsers = JSON.parse(storedUsers);
+                    allUsers = allUsers.filter(u => u.salt); 
+                } catch(e) {
+                    console.error("Error parsing user list, resetting allUsers.");
+                    allUsers = [];
+                }
+            }
+            if (!allUsers || allUsers.length === 0) {
+                console.log("No secure users found. Creating initial user.");
+                const initialUserId = generateUUID();
+                addNewUser(initialUserId, initialUserId, "default", true); 
+                saveAllUsers();
+            }
+        }
+        function saveAllUsers() {
+            localStorage.setItem(ALL_USERS_KEY, JSON.stringify(allUsers));
+        }
+        async function setActiveUser(userId, password) {
+            const userProfile = allUsers.find(u => u.id === userId);
+            if (!userProfile) {
+                showToast(`Error: User ID ${userId} not found.`);
+                return false;
+            }
+            try {
+                const derivedKey = await deriveKey(password, userProfile.salt);
+                currentUser = { 
+                    id: userProfile.id, 
+                    username: userProfile.username, 
+                    key: derivedKey 
+                };
+                await loadList(); 
+                localStorage.setItem(ACTIVE_USER_ID_KEY, userId);
+                usernameDisplay.textContent = `User: ${currentUser.username}`;
+                showToast(`Switched to user: ${currentUser.username}`);
+                hideModal('login-modal');
+                hideModal('user-select-modal');
+                hideModal('data-transfer-modal');
+                return true;
+            } catch (error) {
+                console.error("Login attempt failed:", error);
+                currentUser = null;
+                document.getElementById('login-password').value = ''; 
+                let errorMessage = `Login failed for ${userProfile.username}. Please try again.`;
+                if (error.message === "INCORRECT_PASSWORD") {
+                    errorMessage = `Incorrect password for user: ${userProfile.username}.`;
+                } else {
+                    errorMessage = `Login error for ${userProfile.username}. Data may be corrupted.`;
+                }
+                showToast(errorMessage);
+                return false;
+            }
+        }
+        async function addNewUser(id, username, password, isInitialSetup = false) {
+            try {
+                const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+                const base64Salt = ab2str(salt.buffer);
+                const newUserProfile = { 
+                    id: id, 
+                    username: username,
+                    salt: base64Salt,
+                    iterations: PBKDF2_ITERATIONS
+                };
+                allUsers.push(newUserProfile);
+                saveAllUsers();
+                if (!isInitialSetup) {
+                    await setActiveUser(id, password);
+                    showToast(`User "${username}" created and set as active.`);
+                    renderUserList(); 
+                    hideModal('register-modal');
+                }
+            } catch (error) {
+                console.error("Error creating new user:", error);
+                showToast("Error creating new user. See console.");
+            }
+        }
+        function deleteUser(userId) {
+            if (allUsers.length === 1) {
+                showToast("Cannot delete the only remaining user.");
+                return;
+            }
+            if (currentUser && currentUser.id === userId) {
+                 showToast("Cannot delete the currently active user. Switch first.");
+                 return;
+            }
+            const userToDelete = allUsers.find(u => u.id === userId);
+            const confirmDelete = window.confirm(`Are you sure you want to delete user ${userToDelete.username} and ALL their tracking data? This cannot be undone.`);
+            if (confirmDelete) {
+                allUsers = allUsers.filter(u => u.id !== userId);
+                saveAllUsers();
+                localStorage.removeItem(ENCRYPTED_LIST_PREFIX + userId);
+                showToast(`User ${userToDelete.username} and their data deleted.`);
+                renderUserList();
+            }
+        }
+        async function initializeUser() {
+            loadAllUsers(); 
+            let activeId = localStorage.getItem(ACTIVE_USER_ID_KEY);
+            if (!activeId || !allUsers.some(u => u.id === activeId)) {
+                if (allUsers.length > 0) {
+                    activeId = allUsers[0].id;
+                    localStorage.setItem(ACTIVE_USER_ID_KEY, activeId);
+                } else {
+                    usernameDisplay.textContent = 'Setup Required';
+                    showRegisterModal(true);
+                    return;
+                }
+            }
+            const userProfile = allUsers.find(u => u.id === activeId);
+            if(userProfile) {
+                const isFirstTimeUser = allUsers.length === 1 && activeId === userProfile.id && localStorage.getItem(ENCRYPTED_LIST_PREFIX + activeId) === null;
+                if (isFirstTimeUser) {
+                    const success = await setActiveUser(activeId, "default");
+                    if (!success) {
+                        showUserSelectModal();
+                    }
+                } else {
+                    handleUserSwitchAttempt(activeId);
+                }
+            } else {
+                 usernameDisplay.textContent = 'Setup Required';
+                 showRegisterModal(true);
+            }
+            lucide.createIcons();
+        }
+
+        // --- Message and Visibility Functions (Unchanged) ---
+        function hideModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+        function showApiKeyModal() {
+            document.getElementById('api-key-modal').classList.remove('hidden');
+        }
+        function showToast(message) {
+            toastElement.textContent = message;
+            toastElement.classList.remove('hidden', 'opacity-0');
+            toastElement.classList.add('opacity-100');
+            setTimeout(() => {
+                toastElement.classList.remove('opacity-100');
+                toastElement.classList.add('opacity-0');
+                setTimeout(() => {
+                    toastElement.classList.add('hidden');
+                }, 300);
+            }, 3000);
+        }
+
+        // --- List Data Functions (Unchanged Logic, Key names are dynamic) ---
+        // loadList and saveList remain identical, as they use the
+        // --- List Data Functions (MODIFIED FOR S/E MIGRATION) ---
+        async function loadList() {
+            if (!currentUser) {
+                console.error("Attempted to load list without an active user.");
+                animeList = [];
+                return;
+            }
+            const listKey = ENCRYPTED_LIST_PREFIX + currentUser.id;
+            const storedEncryptedList = localStorage.getItem(listKey);
+            if (storedEncryptedList) {
+                try {
+                    animeList = await decryptData(storedEncryptedList);
+                } catch (error) {
+                    console.error("Decryption failure during load (wrong key/password):", error);
+                    throw new Error("INCORRECT_PASSWORD"); 
+                }
+            } else {
+                animeList = [];
+            }
+            
+            // *** DATA MIGRATION LOGIC ***
+            animeList = animeList.map(anime => {
+                const migrated = { ...anime };
+                migrated.category = migrated.category || 'Pending';
+                migrated.timestamp = migrated.timestamp || Date.now();
+
+                // Check if this item is from the OLD system (has 'total_episodes')
+                if (migrated.total_episodes !== undefined) {
+                    if (migrated.media_type === 'movie') {
+                        migrated.total_seasons = 1;
+                        migrated.watched_season = migrated.watched_episodes; // was 0 or 1
+                        migrated.watched_episode = 0; 
+                    } else {
+                        // Was a series, 'watched_episodes' stored seasons
+                        migrated.total_seasons = migrated.total_episodes;
+                        migrated.watched_season = migrated.watched_episodes;
+                        migrated.watched_episode = 0; // Add new episode field
+                    }
+                    // Remove old deprecated keys
+                    delete migrated.total_episodes;
+                    delete migrated.watched_episodes;
+                }
+                
+                // Ensure new fields exist even if not from old system
+                migrated.watched_season = migrated.watched_season ?? 0;
+                migrated.watched_episode = migrated.watched_episode ?? 0;
+                migrated.total_seasons = migrated.total_seasons ?? 0;
+
+                return migrated;
+            });
+            // *** END MIGRATION LOGIC ***
+
+            if (sortSelect) sortSelect.value = currentSortKey;
+            loadFilters();
+            renderFilterControls();
+            renderTrackingList();
+            updateSearchMessageVisibility();
+        }
+        async function saveList() {
+            if (!currentUser) {
+                 console.error("Attempted to save list without an active user.");
+                 return;
+            }
+            const listKey = ENCRYPTED_LIST_PREFIX + currentUser.id;
+            try {
+                const encryptedList = await encryptData(animeList);
+                localStorage.setItem(listKey, encryptedList);
+                renderFilterControls(); 
+                renderTrackingList();
+                updateSearchMessageVisibility(); 
+                const currentQuery = searchInput.value.trim();
+                if (currentQuery.length >= 3) {
+                    handleSearch(currentQuery); 
+                }
+            } catch (error) {
+                console.error("Error encrypting or saving list:", error);
+                showToast("Error saving data. Please check console.");
+            }
+        }
+        
+        // --- DATA TRANSFER FUNCTIONS (Unchanged Logic) ---
+        // exportUserData, handleImportFile, importUserData, showDataTransferModal
+        // are all identical and will work with the new key names.
+        // ... (Data transfer functions omitted for brevity but are present) ...
+        function exportUserData() {
+             if (!currentUser) {
+                showToast("Error: No active user to export.");
+                return;
+            }
+            const userProfile = allUsers.find(u => u.id === currentUser.id);
+            if (!userProfile) {
+                showToast("Error: User profile not found in system.");
+                return;
+            }
+            const encryptedList = localStorage.getItem(ENCRYPTED_LIST_PREFIX + currentUser.id);
+            if (!encryptedList) {
+                 const confirmExportEmpty = window.confirm(`User ${currentUser.username} has no saved list data. Export profile only?`);
+                 if (!confirmExportEmpty) return;
+            }
+            const backupData = {
+                __backup_version: '1.0',
+                user_profile: {
+                    id: userProfile.id,
+                    username: userProfile.username,
+                    salt: userProfile.salt,
+                    iterations: userProfile.iterations 
+                },
+                encrypted_list_data: encryptedList,
+                backup_timestamp: new Date().toISOString()
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            // Filename updated
+            downloadAnchorNode.setAttribute("download", `media_tracker_backup_${userProfile.username}_${Date.now()}.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            showToast("Export successful! Backup file downloaded.");
+            hideModal('data-transfer-modal');
+        }
+        function handleImportFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    await importUserData(data);
+                } catch (error) {
+                    console.error("Import failed:", error);
+                    showToast("Import failed: File is corrupted or not a valid JSON backup.");
+                }
+            };
+            reader.readAsText(file);
+        }
+        async function importUserData(backupData) {
+            if (backupData.__backup_version !== '1.0' || !backupData.user_profile) {
+                showToast("Import failed: Backup file structure is invalid.");
+                return;
+            }
+            const profile = backupData.user_profile;
+            // Use backupData.encrypted_list_data, which can be null
+            const encryptedList = backupData.encrypted_list_data || null; 
+            let newId = profile.id;
+            let newUsername = profile.username;
+            if (allUsers.some(u => u.id === profile.id)) {
+                newId = generateUUID();
+                newUsername = `${profile.username} (Imported - ${newId.substring(0, 4)})`;
+            }
+            const newUserProfile = {
+                id: newId,
+                username: newUsername,
+                salt: profile.salt,
+                iterations: profile.iterations 
+            };
+            allUsers.push(newUserProfile);
+            saveAllUsers();
+            // Only save the list if it existed in the backup
+            if (encryptedList) {
+                localStorage.setItem(ENCRYPTED_LIST_PREFIX + newId, encryptedList);
+            }
+            showToast(`User "${newUsername}" imported successfully! You must now log in with the **original password** for this profile.`);
+            hideModal('data-transfer-modal');
+            renderUserList();
+            handleUserSwitchAttempt(newId);
+        }
+        function showDataTransferModal() {
+            hideModal('user-select-modal');
+            const modal = document.getElementById('data-transfer-modal');
+            modal.classList.remove('hidden');
+            const exportText = modal.querySelector('.p-4:nth-child(1) p');
+            if (exportText && currentUser) {
+                 exportText.innerHTML = `Creates a JSON file containing the encrypted list and user settings for **${currentUser.username}**.`;
+            }
+            document.getElementById('import-file-input').value = ''; 
+        }
+
+        // --- Modal/UI Logic (Unchanged) ---
+        // renderUserList, showUserSelectModal, showRegisterModal,
+        // handleNewUserRegistration, handleUserSwitchAttempt, loginUser
+        // are all identical.
+        // ... (Modal UI functions omitted for brevity but are present) ...
+        function renderUserList() {
+            const userListDiv = document.getElementById('user-list');
+            if (!userListDiv) return;
+            userListDiv.innerHTML = allUsers.map(user => {
+                const isActive = currentUser && currentUser.id === user.id;
+                const baseClasses = 'flex items-center justify-between p-3 rounded-lg border transition duration-150';
+                const classes = isActive 
+                    ? `${baseClasses} bg-primary-orange/20 border-primary-orange text-light-text font-semibold`
+                    : `${baseClasses} bg-gray-700 border-gray-700 hover:bg-gray-600 text-muted-text hover:text-light-text cursor-pointer`;
+                return `
+                    <div class="${classes}">
+                        <div onclick="${isActive ? '' : `handleUserSwitchAttempt('${user.id}')`}" class="flex-grow flex items-center">
+                            <span data-lucide="${isActive ? 'user-check' : 'user'}" class="w-5 h-5 mr-3 ${isActive ? 'text-primary-orange' : 'text-muted-text'}"></span>
+                            <span class="font-semibold text-sm" title="${user.id}">${user.username}</span>
+                            ${isActive ? '<span class="ml-2 px-2 py-0.5 text-xs bg-primary-orange text-primary-dark rounded-full">Active</span>' : ''}
+                        </div>
+                        <button onclick="deleteUser('${user.id}')" 
+                                class="ml-4 text-muted-text hover:text-red-500 p-1 rounded-full ${isActive ? 'opacity-50 cursor-not-allowed' : ''}"
+                                ${isActive ? 'disabled' : ''}>
+                            <span data-lucide="trash-2" class="w-4 h-4"></span>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+        function showUserSelectModal() {
+            loadAllUsers(); 
+            renderUserList(); 
+            const modal = document.getElementById('user-select-modal');
+            modal.classList.remove('hidden');
+            modal.onclick = (event) => {
+                if (event.target === modal) {
+                    hideModal('user-select-modal');
+                }
+            };
+        }
+        function showRegisterModal(isForced = false) {
+            hideModal('user-select-modal');
+            const modal = document.getElementById('register-modal');
+            modal.classList.remove('hidden');
+            document.getElementById('register-username').value = '';
+            document.getElementById('register-password').value = '';
+            const closeBtn = modal.querySelector('button[onclick="hideModal(\'register-modal\'); showUserSelectModal();"]');
+            if (closeBtn) closeBtn.style.display = isForced ? 'none' : 'block';
+        }
+        async function handleNewUserRegistration() {
+            const username = document.getElementById('register-username').value.trim();
+            const password = document.getElementById('register-password').value;
+            if (allUsers.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+                showToast(`Username "${username}" already exists.`);
+                return;
+            }
+            if (!username || !password || password.length < 6) {
+                showToast("Username and a password of at least 6 characters are required.");
+                return;
+            }
+            const newId = generateUUID();
+            await addNewUser(newId, username, password, false);
+        }
+        function handleUserSwitchAttempt(userId) {
+            hideModal('user-select-modal');
+            const userProfile = allUsers.find(u => u.id === userId);
+            if (!userProfile) return;
+            document.getElementById('login-username').textContent = `Switching to: ${userProfile.username}`;
+            document.getElementById('login-user-id').value = userId;
+            document.getElementById('login-password').value = '';
+            const modal = document.getElementById('login-modal');
+            modal.classList.remove('hidden');
+            modal.onclick = (event) => {
+                if (event.target === modal) {
+                    hideModal('login-modal');
+                    showUserSelectModal();
+                }
+            };
+        }
+        async function loginUser() {
+            const userId = document.getElementById('login-user-id').value;
+            const password = document.getElementById('login-password').value;
+            if (!password) {
+                showToast("Password is required.");
+                return;
+            }
+            await setActiveUser(userId, password);
+        }
+        
+        // --- Utility Functions (Unchanged) ---
+        function debounce(func, delay) {
+            let timeoutId;
+            return function(...args) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    func.apply(this, args);
+                }, delay);
+            };
+        }
+        
+        function updateSearchMessageVisibility() {
+            if (animeList.length > 0) {
+                searchMessageDiv.classList.add('hidden');
+            } else {
+                // Text updated
+                searchMessageDiv.textContent = 'Search for a movie or show to begin tracking!';
+                searchMessageDiv.classList.remove('hidden');
+            }
+        }
+        
+        function clearSearch() {
+            searchInput.value = '';
+            searchResultsDiv.innerHTML = '';
+            clearButton.classList.add('hidden');
+            loadingIndicator.classList.add('hidden');
+            updateSearchMessageVisibility(); 
+            lastQuery = '';
+            lastOMDbResultsCache = []; // Renamed
+        }
+
+        function toggleClearButton() {
+            if (searchInput.value.trim().length > 0) {
+                clearButton.classList.remove('hidden');
+            } else {
+                clearButton.classList.add('hidden');
+            }
+        }
+
+        // --- Core Logic (MODIFIED FOR OMDb) ---
+
+        /**
+         * Adds a media item (movie/show) to the list.
+         * Fetches detailed info from OMDb first.
+         */
+        async function addMediaToList(searchResult) {
+            // OMDb search results use 'imdbID'
+            if (animeList.some(a => a.id === searchResult.imdbID)) {
+                showToast(`${searchResult.Title} is already in your list!`);
+                return;
+            }
+
+            if (OMDb_API_KEY === 'YOUR_API_KEY_HERE') {
+                showToast("Please add your OMDb API key to the script to add items.");
+                return;
+            }
+
+            showToast(`Fetching details for "${searchResult.Title}"...`);
+            loadingIndicator.classList.remove('hidden');
+
+            try {
+                // 1. Fetch detailed info using imdbID (OMDb 'i=' parameter)
+                const detailUrl = `${OMDb_API_URL}&i=${searchResult.imdbID}`;
+                const response = await fetch(detailUrl);
+                if (!response.ok) throw new Error(`OMDb detail API failed (status ${response.status})`);
+                
+                const detail = await response.json();
+                if (detail.Response === 'False') {
+                    // Check for invalid API key
+                    if (detail.Error === "Invalid API key!") {
+                        localStorage.removeItem(OMDb_API_KEY_STORAGE_KEY); // Clear the bad key
+                        OMDb_API_KEY = '';
+                        showApiKeyModal();
+                        showToast("Invalid API Key. Please enter a valid key.");
+                        loadingIndicator.classList.add('hidden');
+                        return; // Stop the add
+                    }
+                    throw new Error(detail.Error);
+                }
+
+                // 2. Determine total units (Seasons for Series, 1 for Movie)
+                // *** MODIFIED DATA MODEL ***
+                let media_data = {
+                    total_seasons: 0,
+                    watched_season: 0,
+                    watched_episode: 0,
+                    media_type: detail.Type // 'movie' or 'series'
+                };
+
+                if (detail.Type === 'series') {
+                    media_data.total_seasons = parseInt(detail.totalSeasons) || 0; // Use 0 if unknown
+                } else if (detail.Type === 'movie') {
+                    media_data.total_seasons = 1; // Movies are 1 unit
+                }
+                // *** END MODIFIED DATA MODEL ***
+
+                // 3. Create the new media object
+                const newMedia = {
+                    id: detail.imdbID,
+                    title: detail.Title,
+                    image_url: detail.Poster !== 'N/A' ? detail.Poster : 'https://placehold.co/80x120/1f2937/9ca3af?text=No+Image',
+                    status: detail.Rated || 'N/A', // Use 'Rated' as status
+                    category: 'Pending',
+                    timestamp: Date.now(),
+                    ...media_data // Spread the new data model fields
+                };
+
+                // 4. Add, save, and notify
+                animeList.push(newMedia);
+                saveList();
+                showToast(`Added "${newMedia.title}" to your list!`);
+                clearSearch();
+
+            } catch (error) {
+                console.error("Error adding media:", error);
+                showToast(`Failed to add "${searchResult.Title}": ${error.message}`);
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Removes a media item from the list.
+         */
+        function removeMediaFromList(id) {
+            animeList = animeList.filter(a => a.id !== id);
+            saveList(); 
+            showToast('Media item removed from list.');
+        }
+
+        /**
+         * Updates the watched count for a media item.
+         * Respects media_type (movie max 1, series max totalSeasons).
+         */
+        function updateEpisodeCount(id, newCount) {
+            // THIS FUNCTION IS NOW DEPRECATED AND REPLACED BY:
+            // updateMovieProgress()
+            // updateSeriesProgress()
+            // handleSeriesProgressChange()
+            
+            // For safety, let's find the item and call the right new function
+            const anime = animeList.find(a => a.id === id);
+            if (!anime) return;
+
+            if (anime.media_type === 'movie') {
+                updateMovieProgress(id, newCount);
+            } else {
+                // This old function can't handle S/E, so we'll just log
+                console.warn("updateEpisodeCount called on a series. This is deprecated.");
+            }
+        }
+        
+        function handleEpisodeInputChange(id, element) {
+            // THIS FUNCTION IS NOW DEPRECATED AND REPLACED BY:
+            // handleMovieProgressChange()
+            // handleSeriesProgressChange()
+            const anime = animeList.find(a => a.id === id);
+            if (!anime) return;
+
+            if (anime.media_type === 'movie') {
+                handleMovieProgressChange(id, element);
+            } else {
+                console.warn("handleEpisodeInputChange called on a series. This is deprecated.");
+            }
+        }
+
+        // --- NEW MOVIE-SPECIFIC PROGRESS FUNCTIONS ---
+        function updateMovieProgress(id, newCount) {
+            const anime = animeList.find(a => a.id === id);
+            if (!anime || anime.media_type !== 'movie') return;
+
+            newCount = Math.max(0, Math.min(newCount, 1)); // Cap at 0 or 1
+
+            if (newCount === 1 && anime.category !== 'Watched') {
+                anime.category = 'Watched';
+                showToast(`Congratulations! "${anime.title}" is now marked as Watched.`);
+            } else if (newCount === 0 && anime.category === 'Watched') {
+                anime.category = 'Pending';
+            }
+            
+            anime.watched_season = newCount; // Use watched_season to store 0 or 1
+            saveList();
+        }
+        
+        function handleMovieProgressChange(id, element) {
+            const newCount = parseInt(element.value);
+            if (!isNaN(newCount)) {
+                updateMovieProgress(id, newCount);
+            }
+        }
+
+        // --- NEW SERIES-SPECIFIC PROGRESS FUNCTIONS ---
+        
+        /**
+         * Handles all series progress updates (S/E).
+         * @param {string} id - The media ID
+         * @param {string} action - 'inc_ep', 'dec_ep', 'inc_season'
+         */
+        function updateSeriesProgress(id, action) {
+            const anime = animeList.find(a => a.id === id);
+            if (!anime || anime.media_type !== 'series') return;
+
+            const oldCategory = anime.category;
+            const totalSeasons = anime.total_seasons;
+
+            if (action === 'inc_ep') {
+                anime.watched_episode++;
+            } else if (action === 'dec_ep') {
+                anime.watched_episode = Math.max(0, anime.watched_episode - 1);
+            } else if (action === 'inc_season') {
+                anime.watched_season++;
+                anime.watched_episode = 0; // Reset episode count on season increment
+            }
+
+            // --- Category Logic ---
+            const isWatching = anime.watched_season > 0 || anime.watched_episode > 0;
+            const isFinished = totalSeasons > 0 && anime.watched_season >= totalSeasons;
+
+            if (isFinished) {
+                if (oldCategory !== 'Watched') {
+                    anime.category = 'Watched';
+                    showToast(`Congratulations! "${anime.title}" is now marked as Watched.`);
+                }
+            } else if (isWatching) {
+                if (oldCategory === 'Pending' || oldCategory === 'Saved') {
+                    anime.category = 'Watching';
+                    showToast(`Starting to watch "${anime.title}". Status set to Watching.`);
+                } else if (oldCategory === 'Watched') {
+                    anime.category = 'Watching'; // Downgraded from Watched
+                }
+            } else { // Not watching (S0 E0)
+                if (oldCategory !== 'Pending' && oldCategory !== 'Saved') {
+                    anime.category = 'Pending';
+                }
+            }
+            
+            saveList();
+        }
+
+        /**
+         * Handles manual text input for series progress (SxxEyy).
+         */
+        function handleSeriesProgressChange(id, element) {
+            const anime = animeList.find(a => a.id === id);
+            if (!anime || anime.media_type !== 'series') return;
+
+            const parsed = parseProgress(element.value);
+
+            if (parsed) {
+                // Valid format, update the item
+                anime.watched_season = parsed.season;
+                anime.watched_episode = parsed.episode;
+                
+                // Manually trigger the category logic from updateSeriesProgress
+                const oldCategory = anime.category;
+                const totalSeasons = anime.total_seasons;
+                const isWatching = anime.watched_season > 0 || anime.watched_episode > 0;
+                const isFinished = totalSeasons > 0 && anime.watched_season >= totalSeasons;
+
+                if (isFinished) {
+                    if (oldCategory !== 'Watched') anime.category = 'Watched';
+                } else if (isWatching) {
+                    if (oldCategory === 'Pending' || oldCategory === 'Saved') anime.category = 'Watching';
+                    else if (oldCategory === 'Watched') anime.category = 'Watching';
+                } else {
+                    if (oldCategory !== 'Pending' && oldCategory !== 'Saved') anime.category = 'Pending';
+                }
+                
+                saveList();
+                showToast(`Progress for "${anime.title}" set to S${pad(parsed.season)}E${pad(parsed.episode)}.`);
+            } else {
+                // Invalid format, show error and revert
+                showToast("Invalid format. Use SXXEYY (e.g., S01E05).");
+                element.value = formatProgress(anime.watched_season, anime.watched_episode);
+            }
+        }
+
+        
+        /**
+         * Updates the category for a media item.
+         */
+        function updateMediaCategory(id, element) {
+            const newCategory = element.value;
+            const anime = animeList.find(a => a.id === id);
+            if (anime) {
+                anime.category = newCategory;
+                // Auto-update counts when changing category
+                if (newCategory === 'Watched') {
+                    if (anime.media_type === 'movie') {
+                        anime.watched_season = 1;
+                        anime.watched_episode = 0;
+                    } else if (anime.total_seasons > 0) {
+                        anime.watched_season = anime.total_seasons;
+                        anime.watched_episode = 0; // Set to S(Total) E0
+                    }
+                }
+                if (newCategory === 'Pending' || newCategory === 'Saved') {
+                    anime.watched_season = 0;
+                    anime.watched_episode = 0;
+                }
+                saveList(); 
+                showToast(`Category for "${anime.title}" set to ${newCategory}.`);
+            }
+        }
+
+        // --- Sorting/Filtering (Unchanged) ---
+        function sortAndRenderList(sortKey) {
+            currentSortKey = sortKey;
+            renderTrackingList();
+        }
+        function loadFilters() {
+            const storedFilters = localStorage.getItem(FILTER_STORAGE_KEY);
+            if (storedFilters) activeFilters = JSON.parse(storedFilters);
+        }
+        function saveFilters() {
+            localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(activeFilters));
+        }
+        function toggleFilter(category) {
+            if (activeFilters.hasOwnProperty(category)) {
+                const activeCount = Object.values(activeFilters).filter(v => v).length;
+                if (activeFilters[category] === true && activeCount === 1) {
+                    showToast("At least one category must remain visible.");
+                    return;
+                }
+                activeFilters[category] = !activeFilters[category];
+                saveFilters(); 
+                renderFilterControls(); 
+                renderTrackingList(); 
+            }
+        }
+        function renderFilterControls() {
+            if (!filterControlsDiv) return;
+            filterControlsDiv.innerHTML = CATEGORIES.map(category => {
+                const isActive = activeFilters[category];
+                const count = animeList.filter(a => a.category === category).length;
+                let classes = 'px-4 py-2 rounded-lg font-semibold transition-all duration-200 shadow-md text-sm';
+                let colorMap = {
+                    'Saved': 'border-blue-500 bg-blue-700 hover:bg-blue-600',
+                    'Pending': 'border-gray-500 bg-gray-700 hover:bg-gray-600',
+                    'Watching': 'border-primary-orange bg-primary-orange/50 hover:bg-primary-orange/70',
+                    'Watched': 'border-green-500 bg-green-700 hover:bg-green-600'
+                };
+                if (isActive) {
+                    classes += ` border-2 text-light-text ${colorMap[category]}`;
+                } else {
+                    classes += ' border-2 border-gray-700 bg-gray-900 text-muted-text opacity-50 hover:opacity-75';
+                }
+                return `<button 
+                            onclick="toggleFilter('${category}')" 
+                            class="${classes}"
+                        >
+                            ${category} (${count})
+                        </button>`;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        // --- Long Press Logic (Unchanged) ---
+        // All functions (startLongPress, endLongPress, longPressAction)
+        // are identical and will correctly call the modified updateEpisodeCount.
+        // ... (Long press functions omitted for brevity but are present) ...
+        function startLongPress(id, event) {
+            if (event.type === 'mousedown' && event.button !== 0) return; 
+            event.preventDefault(); 
+            isLongPressing = false;
+            currentlyPressedId = id;
+            if (pressTimer) clearTimeout(pressTimer);
+            const indicator = document.getElementById(`long-press-indicator-${id}`);
+            if (indicator) {
+                indicator.style.transition = 'none';
+                indicator.style.width = '0%';
+                indicator.style.opacity = '1';
+                setTimeout(() => {
+                    indicator.style.transition = `width ${LONG_PRESS_DURATION / 1000}s linear`;
+                    indicator.style.width = '100%';
+                }, 10);
+            }
+            pressTimer = setTimeout(() => {
+                isLongPressing = true;
+                longPressAction(id);
+                pressTimer = null; 
+            }, LONG_PRESS_DURATION);
+        }
+        function endLongPress() {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+                if (currentlyPressedId !== null) {
+                    const indicator = document.getElementById(`long-press-indicator-${currentlyPressedId}`);
+                    if (indicator) {
+                        indicator.style.transition = 'width 0.1s ease-out, opacity 0.1s ease-out'; 
+                        indicator.style.width = '0%';
+                        indicator.style.opacity = '0';
+                    }
+                }
+            }
+            const wasLongPress = isLongPressing;
+            isLongPressing = false;
+            currentlyPressedId = null;
+            return wasLongPress; 
+        }
+        function longPressAction(id) {
+            const anime = animeList.find(a => a.id === id);
+            if (anime && anime.media_type === 'series') {
+                // *** LONG PRESS NOW INCREMENTS SEASON FOR SERIES ***
+                updateSeriesProgress(id, 'inc_season');
+                
+                const indicator = document.getElementById(`long-press-indicator-${id}`);
+                if (indicator) {
+                    indicator.style.transition = 'background-color 0s';
+                    indicator.style.backgroundColor = '#10b981'; 
+                    indicator.style.width = '100%'; 
+                    setTimeout(() => {
+                        indicator.style.width = '0%';
+                        indicator.style.transition = 'none';
+                        indicator.style.backgroundColor = '#f97316'; 
+                        indicator.style.opacity = '0';
+                    }, 100); 
+                }
+                showToast(`Season incremented for "${anime.title}"!`);
+            } else if (anime && anime.media_type === 'movie') {
+                // Long press does nothing for movies
+                // We can optionally flash the indicator to show it was pressed
+                const indicator = document.getElementById(`long-press-indicator-${id}`);
+                if (indicator) {
+                    indicator.style.opacity = '0';
+                }
+            }
+            currentlyPressedId = null;
+        }
+
+        // --- Search Functions (MODIFIED FOR OMDb) ---
+
+        /**
+         * Fetches media from OMDb API ('s=' parameter).
+         */
+        async function searchOMDbAPI(query) {
+            const now = Date.now();
+            if (now - lastAPICall < RATE_LIMIT_MS) {
+                await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_MS - (now - lastAPICall)));
+            }
+            lastAPICall = Date.now();
+
+            if (OMDb_API_KEY === 'YOUR_API_KEY_HERE') {
+                showToast("Please add your OMDb API key to the script to enable search.");
+                throw new Error("API_KEY_MISSING");
+            }
+
+            try {
+                const url = `${OMDb_API_URL}&s=${encodeURIComponent(query)}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`API returned status ${response.status}`);
+                }
+                
+                const data = await response.json();
+
+                if (data.Response === 'False') {
+                    // This is a valid OMDb response (e.g., "Movie not found!"), not an API error.
+                    // Check for invalid API key
+                    if (data.Error === "Invalid API key!") {
+                        localStorage.removeItem(OMDb_API_KEY_STORAGE_KEY); // Clear the bad key
+                        OMDb_API_KEY = '';
+                        showApiKeyModal();
+                        showToast("Invalid API Key. Please enter a valid key.");
+                        return []; // Stop the search
+                    }
+                    return []; 
+                }
+                
+                // Filter for only movies and series
+                return data.Search ? data.Search.filter(item => item.Type === 'movie' || item.Type === 'series') : [];
+            } catch (error) {
+                console.error("Error fetching media from OMDb:", error);
+                if (error.message !== "API_KEY_MISSING") {
+                    throw new Error("API_ERROR");
+                }
+                return []; // Return empty if API key is missing
+            }
+        }
+        
+        /**
+         * Searches the local list for matching titles.
+         */
+        function searchLocalList(query) {
+            if (!query) return [];
+            const lowerQuery = query.toLowerCase();
+            // Returns full objects
+            return animeList.filter(anime => anime.title.toLowerCase().includes(lowerQuery));
+        }
+
+        /**
+         * Handles search input, queries local list and OMDb, and renders results.
+         */
+        async function handleSearch(query) {
+            query = query.trim();
+
+            if (query.length < 3) {
+                searchResultsDiv.innerHTML = '';
+                searchMessageDiv.textContent = 'Please enter at least 3 characters to search.';
+                searchMessageDiv.classList.remove('hidden');
+                loadingIndicator.classList.add('hidden');
+                return;
+            }
+            
+            searchResultsDiv.innerHTML = '';
+            searchMessageDiv.classList.add('hidden');
+            loadingIndicator.classList.remove('hidden');
+            
+            // 1. Get local results (full objects)
+            const localMatches = searchLocalList(query);
+            const localIdsInResults = new Set(localMatches.map(a => a.id));
+            
+            // 2. Get OMDb results
+            let omdbResults = [];
+            let apiError = false;
+            const isSameQuery = (query === lastQuery);
+
+            if (!isSameQuery) {
+                try {
+                    omdbResults = await searchOMDbAPI(query);
+                    lastOMDbResultsCache = omdbResults; 
+                    lastQuery = query; 
+                } catch (error) {
+                    if (error.message === "API_ERROR") apiError = true;
+                    lastOMDbResultsCache = []; 
+                    lastQuery = ''; 
+                }
+            } else {
+                omdbResults = lastOMDbResultsCache;
+            }
+            
+            loadingIndicator.classList.add('hidden');
+
+            // 3. Filter OMDb results to exclude items *already in our list*
+            const uniqueOMDbResults = omdbResults.filter(omdbItem => !localIdsInResults.has(omdbItem.imdbID));
+            
+            // 4. Combine: Local matches first, then unique OMDb results
+            const allResults = [
+                ...localMatches.map(item => ({ ...item, is_local: true })), 
+                ...uniqueOMDbResults.map(item => ({ ...item, is_local: false }))
+            ];
+            
+            if (apiError) {
+                searchResultsDiv.innerHTML += `
+                    <p class="text-red-500 col-span-full p-4 rounded-xl bg-secondary-dark/50 text-center mb-6">
+                        Error fetching external data. Displaying local matches only.
+                    </p>
+                `;
+            }
+
+            if (allResults.length === 0) {
+                 searchMessageDiv.textContent = apiError ? 
+                    'No local matches found.' :
+                    'No results found for your query, locally or online.';
+                 searchMessageDiv.classList.remove('hidden');
+                 return;
+            }
+            
+            renderSearchResults(allResults);
+        }
+
+        const debouncedSearch = debounce(() => {
+            const query = searchInput.value;
+            handleSearch(query);
+        }, 500); 
+
+        // --- Rendering Functions (MODIFIED FOR OMDb) ---
+
+        /**
+         * Generates the HTML for a media card in the "My List" section.
+         * Dynamically adjusts labels for Movies vs. Series.
+         */
+        function generateTrackedMediaCardHtml(anime, isSearchContext = false) {
+            // *** MIGRATED DATA MODEL ***
+            const totalSeasons = anime.total_seasons;
+            const watchedSeason = anime.watched_season;
+            const watchedEpisode = anime.watched_episode;
+            const isMovie = anime.media_type === 'movie';
+            
+            // --- Progress Bar Logic ---
+            let progressPercent = 0;
+            if (isMovie) {
+                progressPercent = watchedSeason === 1 ? 100 : 0;
+            } else if (totalSeasons > 0) {
+                // Base progress on seasons
+                progressPercent = (watchedSeason / totalSeasons) * 100;
+                // Add a little extra for episodes within the current season
+                if (watchedEpisode > 0 && watchedSeason < totalSeasons) {
+                    progressPercent += (1 / totalSeasons) * 20; // Add 20% of a season's bar
+                }
+            } else if (watchedSeason > 0 || watchedEpisode > 0) {
+                progressPercent = 100; // Watched something, total is 'Unknown'
+            }
+            
+            const isCompleted = isMovie ? watchedSeason === 1 : (totalSeasons > 0 && watchedSeason >= totalSeasons);
+            
+            // --- Category Styling ---
+            let titleColorClass = 'text-light-text';
+            let borderClass = 'border-gray-500';
+
+            switch(anime.category) {
+                case 'Watched':
+                    titleColorClass = 'text-green-400';
+                    borderClass = 'border-green-500';
+                    break;
+                case 'Watching':
+                    titleColorClass = 'text-primary-orange';
+                    borderClass = 'border-primary-orange';
+                    break;
+            }
+            
+            const progressBarColorClass = isCompleted ? 'bg-green-500' : 'bg-primary-orange';
+            const progressTextColorClass = isCompleted ? 'text-green-400' : 'text-light-text';
+
+            // --- Dynamic Labels & Inputs ---
+            let progressDisplayHtml = '';
+            let progressControlsHtml = '';
+
+            if (isMovie) {
+                // --- MOVIE UI ---
+                progressDisplayHtml = `
+                    <div class="text-sm font-medium mb-1 ${progressTextColorClass}">
+                        ${watchedSeason} / 1 Watched
+                    </div>
+                `;
+                progressControlsHtml = `
+                    <button onclick="updateMovieProgress('${anime.id}', ${watchedSeason - 1})" 
+                            class="p-2 bg-primary-orange/30 text-light-text rounded-lg hover:bg-primary-orange/50 transition duration-150">
+                        <span data-lucide="minus" class="w-4 h-4"></span>
+                    </button>
+                    
+                    <input type="number" 
+                           value="${watchedSeason}" 
+                           onchange="handleMovieProgressChange('${anime.id}', this)"
+                           min="0"
+                           max="1"
+                           class="w-full text-center p-2 rounded-lg bg-gray-700 border border-primary-orange/50 focus:border-primary-orange focus:ring-1 focus:ring-primary-orange text-light-text font-mono">
+
+                    <button onclick="updateMovieProgress('${anime.id}', ${watchedSeason + 1})" 
+                            class="p-2 bg-primary-orange text-primary-dark rounded-lg hover:bg-orange-500 transition duration-150">
+                        <span data-lucide="plus" class="w-4 h-4"></span>
+                    </button>
+                `;
+            } else {
+                // --- SERIES UI ---
+                const progressString = formatProgress(watchedSeason, watchedEpisode);
+                progressDisplayHtml = `
+                    <div class="text-sm font-medium mb-1 ${progressTextColorClass}">
+                        Progress: <span class="font-mono">${progressString}</span>
+                        <span class="text-xs text-muted-text">(Long-press to inc. Season)</span>
+                    </div>
+                `;
+                progressControlsHtml = `
+                    <button onclick="updateSeriesProgress('${anime.id}', 'dec_ep')" 
+                            class="p-2 bg-primary-orange/30 text-light-text rounded-lg hover:bg-primary-orange/50 transition duration-150">
+                        <span data-lucide="minus" class="w-4 h-4"></span>
+                    </button>
+                    
+                    <input type="text" 
+                           value="${progressString}" 
+                           onchange="handleSeriesProgressChange('${anime.id}', this)"
+                           class="w-full text-center p-2 rounded-lg bg-gray-700 border border-primary-orange/50 focus:border-primary-orange focus:ring-1 focus:ring-primary-orange text-light-text font-mono">
+
+                    <button onclick="updateSeriesProgress('${anime.id}', 'inc_ep')" 
+                            class="p-2 bg-primary-orange text-primary-dark rounded-lg hover:bg-orange-500 transition duration-150">
+                        <span data-lucide="plus" class="w-4 h-4"></span>
+                    </button>
+                `;
+            }
+
+            return `
+                <div id="tracked-anime-${anime.id}" 
+                     class="bg-secondary-dark p-4 rounded-xl shadow-2xl flex flex-col border-2 ${borderClass} transition-all duration-300 relative overflow-hidden"
+                     onmousedown="startLongPress('${anime.id}', event)"
+                     ontouchstart="startLongPress('${anime.id}', event)"
+                     onmouseup="endLongPress()"
+                     ontouchend="endLongPress()"
+                     onmouseleave="endLongPress()"
+                     ontouchmove="endLongPress()"
+                     style="cursor: pointer;"
+                >
+                    <div id="long-press-indicator-${anime.id}" class="long-press-indicator"></div>
+                    
+                    <div class="flex items-start mb-4" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+                        <img src="${anime.image_url}" 
+                             onerror="this.onerror=null; this.src='https://placehold.co/80x120/1f2937/9ca3af?text=No+Image'"
+                             alt="${anime.title} poster" 
+                             class="w-16 h-24 object-cover rounded-lg mr-4 shadow-md">
+                        <div class="flex-grow">
+                            <h3 class="text-xl font-bold ${titleColorClass} leading-tight" title="${anime.title}">${anime.title}</h3>
+                            
+                            <select onchange="updateMediaCategory('${anime.id}', this)"
+                                    class="mt-1 mb-2 p-1.5 text-sm rounded-lg bg-gray-700 border border-primary-orange/50 focus:ring-1 focus:ring-primary-orange focus:border-primary-orange text-light-text w-full max-w-[150px] appearance-none cursor-pointer">
+                                <option value="Saved" ${anime.category === 'Saved' ? 'selected' : ''}>Saved</option>
+                                <option value="Pending" ${anime.category === 'Pending' ? 'selected' : ''}>Pending</option>
+                                <option value="Watching" ${anime.category === 'Watching' ? 'selected' : ''}>Watching</option>
+                                <option value="Watched" ${anime.category === 'Watched' ? 'selected' : ''}>Watched</option>
+                            </select>
+
+                            <p class="text-sm text-muted-text">Total Seasons: <span class="font-semibold">${totalSeasons || (isMovie ? 1 : 'Unknown')}</span></p>
+                            <p class="text-xs text-light-text/70">Rated: ${anime.status || 'N/A'}</p>
+                        </div>
+                        <button onclick="removeMediaFromList('${anime.id}')" 
+                                class="text-muted-text hover:text-red-500 transition duration-200 p-1 rounded-full">
+                            <span data-lucide="x" class="w-5 h-5"></span>
+                        </button>
+                    </div>
+                    
+                    <div class="mb-4">
+                        ${progressDisplayHtml}
+                        <div class="w-full bg-gray-700 rounded-full h-2.5">
+                            <div class="h-2.5 rounded-full ${progressBarColorClass}" 
+                                 style="width: ${progressPercent > 100 ? 100 : progressPercent}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="flex space-x-2 mt-auto" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+                        ${progressControlsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders search results, branching between local items and OMDb items.
+         */
+        function renderSearchResults(results) {
+            searchResultsDiv.innerHTML = results.map(item => {
+                const isLocalMatch = item.is_local; 
+                
+                if (isLocalMatch) {
+                    // Item is already from animeList
+                    return generateTrackedMediaCardHtml(item, true);
+                }
+                
+                // Item is an OMDb search result
+                // OMDb search items have: Title, Year, imdbID, Type, Poster
+                let buttonHtml = `<button onclick='addMediaToList(${JSON.stringify(item).replace(/"/g, '&quot;')})' 
+                                    class="w-full py-2 bg-primary-orange text-primary-dark font-bold rounded-lg mt-3 transition duration-200 hover:bg-orange-500 shadow-md shadow-primary-orange/30">
+                                      <span data-lucide="plus" class="w-4 h-4 inline-block -mt-0.5"></span> Add to List
+                                 </button>`;
+                
+                const posterUrl = item.Poster !== 'N/A' ? item.Poster : 'https://placehold.co/100x150/1f2937/9ca3af?text=No+Image';
+
+                return `
+                    <div class="bg-secondary-dark/50 p-4 rounded-xl shadow-xl hover:bg-secondary-dark/70 flex flex-col transition duration-300">
+                        <div class="relative">
+                            <img src="${posterUrl}" 
+                                 onerror="this.onerror=null; this.src='https://placehold.co/100x150/1f2937/9ca3af?text=No+Image'"
+                                 alt="${item.Title} poster" 
+                                 class="w-full h-48 object-cover rounded-lg mb-3 shadow-md border border-primary-orange/20">
+                        </div>
+                        <h3 class="text-lg font-semibold text-primary-orange truncate" title="${item.Title}">${item.Title}</h3>
+                        <p class="text-sm text-muted-text flex-grow">
+                            Type: <span class="font-semibold">${item.Type}</span> | Year: ${item.Year}
+                        </p>
+                        ${buttonHtml}
+                    </div>
+                `;
+            }).join('');
+            
+            lucide.createIcons();
+        }
+
+        /**
+         * Renders the main tracking list.
+         */
+        function renderTrackingList() {
+            if (animeList.length === 0) {
+                trackingListDiv.innerHTML = '';
+                emptyListMessage.classList.remove('hidden');
+                return;
+            }
+            
+            emptyListMessage.classList.add('hidden');
+
+            let sortedList = [...animeList]; 
+            
+            if (currentSortKey === 'title_asc') sortedList.sort((a, b) => a.title.localeCompare(b.title));
+            else if (currentSortKey === 'title_desc') sortedList.sort((a, b) => b.title.localeCompare(a.title));
+            else if (currentSortKey === 'timestamp_desc') sortedList.sort((a, b) => b.timestamp - a.timestamp); 
+            else if (currentSortKey === 'timestamp_asc') sortedList.sort((a, b) => a.timestamp - b.timestamp);
+            
+            const filteredList = sortedList.filter(anime => activeFilters[anime.category]);
+
+            if (filteredList.length === 0) {
+                 trackingListDiv.innerHTML = `<p class="text-center text-muted-text mt-4 col-span-full text-xl">
+                     No media visible under the current filters. Click the filter buttons above to change visibility.
+                 </p>`;
+                 return;
+            }
+
+            trackingListDiv.innerHTML = filteredList.map(anime => {
+                // Use the new media card generator
+                return generateTrackedMediaCardHtml(anime, false);
+            }).join('');
+            
+            lucide.createIcons();
+        }
+
+        // --- Initialization ---
+
+        window.onload = () => {
+            bootApplication(); 
+        };
+
+        function bootApplication() {
+            const storedKey = localStorage.getItem(OMDb_API_KEY_STORAGE_KEY);
+            if (storedKey && storedKey !== 'YOUR_API_KEY_HERE') {
+                OMDb_API_KEY = storedKey;
+                OMDb_API_URL = `https://www.omdbapi.com/?apikey=${OMDb_API_KEY}`;
+                initializeUser();
+            } else {
+                showApiKeyModal();
+            }
+        }
+
+        function saveApiKey() {
+            const apiKeyInput = document.getElementById('api-key-input');
+            const newKey = apiKeyInput.value.trim();
+            if (newKey) {
+                localStorage.setItem(OMDb_API_KEY_STORAGE_KEY, newKey);
+                OMDb_API_KEY = newKey;
+                OMDb_API_URL = `https://www.omdbapi.com/?apikey=${OMDb_API_KEY}`;
+                hideModal('api-key-modal');
+                initializeUser();
+            } else {
+                showToast("Please enter a valid API key.");
+            }
+        }
+
+        // Expose global functions for HTML interaction (Renamed)
+        window.debouncedSearch = debouncedSearch;
+        window.addMediaToList = addMediaToList; // Renamed
+        window.removeMediaFromList = removeMediaFromList; // Renamed
+        
+        // --- DEPRECATED ---
+        // window.updateEpisodeCount = updateEpisodeCount;
+        // window.handleEpisodeInputChange = handleEpisodeInputChange;
+        
+        // --- NEW Progress Functions ---
+        window.updateMovieProgress = updateMovieProgress;
+        window.handleMovieProgressChange = handleMovieProgressChange;
+        window.updateSeriesProgress = updateSeriesProgress;
+        window.handleSeriesProgressChange = handleSeriesProgressChange;
+
+        window.updateMediaCategory = updateMediaCategory; // Renamed
+        window.sortAndRenderList = sortAndRenderList; 
+        window.toggleFilter = toggleFilter; 
+        window.clearSearch = clearSearch;
+        window.toggleClearButton = toggleClearButton;
+        window.startLongPress = startLongPress;
+        window.endLongPress = endLongPress;
+        window.handleSearch = handleSearch;
+        
+        // Expose user management functions (Unchanged)
+        window.showUserSelectModal = showUserSelectModal;
+        window.setActiveUser = setActiveUser;
+        window.addNewUser = addNewUser;
+        window.deleteUser = deleteUser;
+        window.showRegisterModal = showRegisterModal;
+        window.handleNewUserRegistration = handleNewUserRegistration;
+        window.handleUserSwitchAttempt = handleUserSwitchAttempt;
+        window.loginUser = loginUser;
+        window.hideModal = hideModal;
+        
+        // Expose Data Transfer Functions (Unchanged)
+        window.exportUserData = exportUserData;
+        window.handleImportFile = handleImportFile;
+        window.showDataTransferModal = showDataTransferModal;
+        
+        // Expose NEW API Key function
+        window.saveApiKey = saveApiKey;
+        
+    </script>
+</body>
+</html>
