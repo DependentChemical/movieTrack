@@ -7,6 +7,24 @@
     <title>Media Watch Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
 	<link rel="icon" type="image/png" href="favicon-192.png">
+	
+	<link rel="manifest" href="https://dependentchemical.github.io/movieTrack/manifest.json">
+	
+	<script>
+	  if ('serviceWorker' in navigator) {
+		window.addEventListener('load', () => {
+		  // The scope here should generally match your start_url/scope in the manifest
+		  navigator.serviceWorker.register('https://dependentchemical.github.io/movieTrack/sw.js', { scope: 'https://dependentchemical.github.io/movieTrack/' })
+			.then(registration => {
+			  console.log('Service Worker registered: ', registration);
+			})
+			.catch(error => {
+			  console.log('Service Worker registration failed: ', error);
+			});
+		});
+	  }
+	</script>
+	
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         /* Set default font to Inter for a modern look */
