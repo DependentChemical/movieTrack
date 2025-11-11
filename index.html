@@ -1348,7 +1348,27 @@
             }
 
             try {
-                const url = `${OMDb_API_URL}&s=${encodeURIComponent(query)}`;
+
+				//PREPROCESS WHEN ADDING YEAR OF RELEASE
+				const originalString = query;
+				const regex = /\d{4}/;
+				let url = ""
+				// 1. Get the first instance of four digits
+				const firstFourDigits = originalString.match(regex);
+				let groupedDigits = null; // Variable to hold the extracted string
+
+				if (firstFourDigits) {
+					groupedDigits = firstFourDigits[0]; // The matched string is the first element of the array
+				  
+					// 2. Create the new string with the first instance stripped
+					// Since the 'g' flag is not used, replace() only replaces the first occurrence.
+					const strippedString = originalString.replace(regex, '').trim();
+					url = `${OMDb_API_URL}&s=${encodeURIComponent(strippedString)}&y=${groupedDigits}`;
+				} else {
+					url = `${OMDb_API_URL}&s=${encodeURIComponent(query)}`;
+				}
+				
+				console.log(url);
                 const response = await fetch(url);
                 
                 if (!response.ok) {
