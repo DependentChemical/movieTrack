@@ -945,6 +945,7 @@
          * Fetches detailed info from OMDb first.
          */
         async function addMediaToList(searchResult) {
+			searchResult = JSON.parse(urlSafeBase64Decode(searchResult));
             // OMDb search results use 'imdbID'
             if (animeList.some(a => a.id === searchResult.imdbID)) {
                 showToast(`${searchResult.Title} is already in your list!`);
@@ -1643,7 +1644,71 @@
                 </div>
             `;
         }
+		/**
+		 * Encodes a string into a URL-safe Base64 format.
+		 * - Handles full UTF-8 support using TextEncoder.
+		 * - Replaces '+' with '-' and '/' with '_'.
+		 * - Removes '=' padding.
+		 * @param {string} str The string to encode.
+		 * @returns {string} The URL-safe Base64 encoded string.
+		 */
+		function urlSafeBase64Encode(str) {
+			// 1. Convert string to UTF-8 bytes (Uint8Array)
+			const encoder = new TextEncoder();
+			const bytes = encoder.encode(str);
+			
+			// 2. Convert byte array to a "binary string" for btoa()
+			// btoa() requires a string where each character is an 8-bit byte.
+			let binaryString = '';
+			for (let i = 0; i < bytes.length; i++) {
+				binaryString += String.fromCharCode(bytes[i]);
+			}
 
+			// 3. Standard Base64 Encoding
+			let base64 = btoa(binaryString);
+
+			// 4. URL-Safe Conversion
+			// Replace non-safe characters and remove padding
+			base64 = base64.replace(/\+/g, '-');
+			base64 = base64.replace(/\//g, '_');
+			base64 = base64.replace(/=/g, ''); // Remove padding
+
+			return base64;
+		}
+		
+		/**
+		 * Decodes a URL-safe Base64 string back to the original string.
+		 * - Reverses the character replacement: '-' back to '+' and '_' back to '/'.
+		 * - Adds padding back if necessary before decoding.
+		 * - Handles full UTF-8 support using TextDecoder.
+		 * @param {string} base64UrlSafe The URL-safe Base64 encoded string.
+		 * @returns {string} The decoded original string.
+		 */
+		function urlSafeBase64Decode(base64UrlSafe) {
+			// 1. Reverse URL-Safe Conversion
+			let base64 = base64UrlSafe.replace(/-/g, '+');
+			base64 = base64.replace(/_/g, '/');
+
+			// 2. Re-add Padding (Crucial for atob() if removed)
+			// Base64 strings must have a length divisible by 4.
+			while (base64.length % 4) {
+				base64 += '=';
+			}
+
+			// 3. Standard Base64 Decoding
+			// This returns the "binary string" representation of the bytes
+			const binaryString = atob(base64);
+
+			// 4. Convert "binary string" to UTF-8 bytes (Uint8Array)
+			const bytes = new Uint8Array(binaryString.length);
+			for (let i = 0; i < binaryString.length; i++) {
+				bytes[i] = binaryString.charCodeAt(i);
+			}
+			
+			// 5. Convert UTF-8 bytes back to a standard string
+			const decoder = new TextDecoder('utf-8');
+			return decoder.decode(bytes);
+		}
         /**
          * Renders search results, branching between local items and OMDb items.
          */
@@ -1658,7 +1723,8 @@
                 
                 // Item is an OMDb search result
                 // OMDb search items have: Title, Year, imdbID, Type, Poster
-                let buttonHtml = `<button onclick='addMediaToList(${JSON.stringify(item).replace(/"/g, '&quot;')})' 
+				let b64string = urlSafeBase64Encode(JSON.stringify(item));
+                let buttonHtml = `<button onclick='addMediaToList("${b64string}")' 
                                     class="w-full py-2 bg-primary-orange text-primary-dark font-bold rounded-lg mt-3 transition duration-200 hover:bg-orange-500 shadow-md shadow-primary-orange/30">
                                       <span data-lucide="plus" class="w-4 h-4 inline-block -mt-0.5"></span> Add to List
                                  </button>`;
